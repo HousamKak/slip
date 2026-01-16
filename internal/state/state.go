@@ -281,7 +281,11 @@ func LoadScores() (*ScoreBoard, error) {
 func (sb *ScoreBoard) Save() error {
 	sb.mu.RLock()
 	defer sb.mu.RUnlock()
+	return sb.save()
+}
 
+// save is an internal method that saves without locking (caller must hold lock)
+func (sb *ScoreBoard) save() error {
 	path := ScoresPath()
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -318,7 +322,7 @@ func (sb *ScoreBoard) AddScore(gameID string, score Score) error {
 	}
 
 	sb.Scores[gameID] = scores
-	return sb.Save()
+	return sb.save()
 }
 
 // GetTopScores returns top scores for a game
@@ -359,8 +363,6 @@ func (sb *ScoreBoard) IsHighScore(gameID string, value int) bool {
 	if len(scores) == 0 {
 		return true
 	}
-	if len(scores) < 10 {
-		return true
-	}
-	return value > scores[len(scores)-1].Value
+	// High score means beating the current best (first in sorted list)
+	return value > scores[0].Value
 }

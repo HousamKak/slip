@@ -318,9 +318,26 @@ Binary: `slip.exe` or `slip`
    - State load/save functionality
    - Config path utilities
 
+4. **Store Client Tests** (NEW)
+   - `internal/store/client_test.go` - 13 test functions
+   - Registry fetching and caching
+   - Game listing and search
+   - Download URL resolution
+   - Checksum verification (SHA256)
+   - Progress tracking
+   - HTTP error handling
+
+5. **Plugin Loader Tests** (NEW)
+   - `internal/plugins/loader_test.go` - 15 test functions
+   - Manifest loading and parsing
+   - Plugin scanning and discovery
+   - Plugin listing and retrieval
+   - Plugin uninstallation
+   - Error handling for missing/invalid plugins
+
 ### Test Results Summary
 
-**Total Tests:** 70+ test functions across codebase
+**Total Tests:** 110+ test functions across codebase
 
 **Pass Rate:**
 - ✅ Snake: 16/16 tests PASS (100%)
@@ -329,17 +346,24 @@ Binary: `slip.exe` or `slip`
 - ✅ Blockfall: 19/19 tests PASS (100%)
 - ✅ Engine Input: 7/7 test suites PASS (100%)
 - ✅ State: 10/10 tests PASS (100%)
+- ✅ Store Client: 13/13 tests PASS (100%)
+- ✅ Plugin Loader: 15/15 tests PASS (100%)
 
-**Overall:** 87 tests passing, 0 failures (100% pass rate)
+**Overall:** 115 tests passing, 0 failures (100% pass rate)
 
 ### Test Fixes Applied
 
-Fixed 4 initially failing tests to achieve 100% pass rate:
+Fixed 4 initially failing game tests + 2 state issues to achieve 100% pass rate:
 
+**Game Test Fixes:**
 1. **TestBreakoutBrickCollision** - Fixed test logic to properly save initial brick state before collision
 2. **TestBreakoutMultiHitBrick** - Fixed test to check for damage (hits < 2) instead of exact hit count
 3. **TestBlockfallDrop** - Fixed test to verify piece placement on board (drop spawns new piece)
 4. **TestBlockfallScoring** - Fixed test to use landPiece() which triggers scoring logic
+
+**State Implementation Fixes:**
+5. **Deadlock in ScoreBoard.Save()** - Fixed RWMutex deadlock where AddScore() held write lock and called Save() which tried to acquire read lock. Created internal save() method that doesn't lock.
+6. **IsHighScore() logic** - Fixed to check if score beats current record (scores[0]) instead of checking if it makes top 10 list. Matches common "high score" terminology.
 
 ### Testing Coverage
 
@@ -369,6 +393,23 @@ Fixed 4 initially failing tests to achieve 100% pass rate:
 - Multiple game score isolation
 - Config file paths
 - State save/load
+
+**Store Client:**
+- Registry HTTP fetching
+- Response caching (TTL-based)
+- Game search (name, description, ID)
+- Platform-specific downloads
+- SHA256 checksum verification
+- Download progress tracking
+- Error handling (network, parsing, validation)
+
+**Plugin System:**
+- Manifest JSON parsing
+- Plugin directory scanning
+- Plugin installation/uninstallation
+- Plugin type validation (lua/wasm/native)
+- Manifest field validation
+- Plugin discovery and loading
 
 ---
 
@@ -492,8 +533,11 @@ Fixed 4 initially failing tests to achieve 100% pass rate:
 - `internal/state/state_test.go` - Score and config persistence tests
 - `internal/games/snake/snake_test.go` - Fixed NewScreen signature
 - `internal/games/pong/pong_test.go` - Fixed NewScreen signature
-- `internal/games/breakout/breakout_test.go` - Fixed NewScreen signature
-- `internal/games/blockfall/blockfall_test.go` - Fixed NewScreen signature
+- `internal/games/breakout/breakout_test.go` - Fixed NewScreen signature, fixed 2 test logic issues
+- `internal/games/blockfall/blockfall_test.go` - Fixed NewScreen signature, fixed 2 test logic issues
+- `internal/state/state.go` - Fixed RWMutex deadlock in Save(), fixed IsHighScore() logic
+- `internal/store/client_test.go` - Complete store client test suite (NEW)
+- `internal/plugins/loader_test.go` - Complete plugin loader test suite (NEW)
 
 ### Phase 7:
 - `README.md` - Comprehensive user documentation (2000+ lines)
