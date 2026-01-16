@@ -1,0 +1,12 @@
+{
+    "id": "lua-pong",
+    "name": "Lua Pong",
+    "description": "Simple pong game written in Lua",
+    "author": "Slip Examples",
+    "version": "1.0.0",
+    "type": "lua",
+    "entry": "game.lua",
+    "category": "game",
+    "min_width": 30,
+    "min_height": 15
+}
