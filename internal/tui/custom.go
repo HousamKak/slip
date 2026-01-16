@@ -149,27 +149,39 @@ func (t *CustomTUI) Run() error {
 	resizeTicker := time.NewTicker(500 * time.Millisecond)
 	defer resizeTicker.Stop()
 
+	// Render ticker for idle updates (store loading, etc.)
+	renderTicker := time.NewTicker(100 * time.Millisecond)
+	defer renderTicker.Stop()
+
+	// Initial render
+	screen.Clear()
+	t.render(screen)
+	screen.Flush()
+
 	for t.running {
-		// Handle input
+		// Handle input and events - blocking select for better responsiveness
 		select {
 		case inp := <-input.Channel():
 			t.handleInput(inp)
+			// Render immediately after input for instant feedback
+			screen.Clear()
+			t.render(screen)
+			screen.Flush()
 		case <-resizeTicker.C:
 			// Check for terminal resize
 			w, h, err := term.Size()
 			if err == nil && (w != t.width || h != t.height) {
 				t.handleResize(w, h, screen)
+				screen.Clear()
+				t.render(screen)
+				screen.Flush()
 			}
-		default:
+		case <-renderTicker.C:
+			// Periodic render for animations/loading states
+			screen.Clear()
+			t.render(screen)
+			screen.Flush()
 		}
-
-		// Render current screen
-		screen.Clear()
-		t.render(screen)
-		screen.Flush()
-
-		// Small delay to prevent busy loop
-		time.Sleep(16 * time.Millisecond) // ~60 FPS
 	}
 
 	return nil

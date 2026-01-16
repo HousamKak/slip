@@ -187,7 +187,7 @@ func (e *Engine) Run() error {
 				e.running = false
 				continue
 			}
-			if input.Key == KeyEscape && e.onExit != nil {
+			if input.Key == KeyEscape || input.Key == KeyRune && (input.Rune == 'q' || input.Rune == 'Q') {
 				e.running = false
 				continue
 			}

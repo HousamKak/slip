@@ -101,6 +101,8 @@ slip dock right
 - **DVD Bounce** - Classic DVD logo bounce
 - **Fire** - Animated fire effect
 
+**Animation Controls:** Press `Q`, `Esc`, or `Ctrl+C` to exit
+
 ### 🎨 Five Color Themes
 
 Choose from: `default`, `gruvbox`, `nord`, `dracula`, `monokai`

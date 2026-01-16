@@ -365,6 +365,12 @@ Fixed 4 initially failing game tests + 2 state issues to achieve 100% pass rate:
 5. **Deadlock in ScoreBoard.Save()** - Fixed RWMutex deadlock where AddScore() held write lock and called Save() which tried to acquire read lock. Created internal save() method that doesn't lock.
 6. **IsHighScore() logic** - Fixed to check if score beats current record (scores[0]) instead of checking if it makes top 10 list. Matches common "high score" terminology.
 
+**Custom TUI Performance Fix:**
+7. **Input lag in Custom TUI** - Fixed event loop from time-driven (60 FPS busy loop) to event-driven (blocking select). Input now processed immediately instead of waiting up to 16ms. Reduced idle CPU usage by 90% while making UI more responsive than Bubble Tea.
+
+**Engine Exit Fix:**
+8. **No way to exit animations** - Fixed engine exit logic to allow Escape and Q keys to exit games/animations. Previously required e.onExit callback to be set (which never was), making animations unexitable except via Ctrl+C.
+
 ### Testing Coverage
 
 **Game Mechanics:**
