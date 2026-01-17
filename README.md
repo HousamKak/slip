@@ -141,13 +141,66 @@ slip config set tui_mode bubbletea
 
 ## Installation
 
-### Prerequisites
+### Download Pre-built Binaries (Recommended)
 
-- Go 1.25 or higher
-- Terminal with ANSI color support
-- (Optional) tmux for pane integration
+Download the latest release for your platform from the [GitHub Releases](https://github.com/yourusername/slip/releases) page.
+
+**Linux:**
+```bash
+# Download and extract (replace VERSION with actual version, e.g., 1.0.0)
+wget https://github.com/yourusername/slip/releases/download/vVERSION/slip-linux-amd64.tar.gz
+tar -xzf slip-linux-amd64.tar.gz
+
+# Make executable and move to PATH
+chmod +x slip-linux-amd64
+sudo mv slip-linux-amd64 /usr/local/bin/slip
+
+# Verify installation
+slip --help
+```
+
+**macOS:**
+```bash
+# Intel Mac
+wget https://github.com/yourusername/slip/releases/download/vVERSION/slip-darwin-amd64.tar.gz
+tar -xzf slip-darwin-amd64.tar.gz
+
+# Apple Silicon Mac (M1/M2/M3)
+wget https://github.com/yourusername/slip/releases/download/vVERSION/slip-darwin-arm64.tar.gz
+tar -xzf slip-darwin-arm64.tar.gz
+
+# Make executable and move to PATH
+chmod +x slip-darwin-*
+sudo mv slip-darwin-* /usr/local/bin/slip
+
+# Verify installation
+slip --help
+```
+
+**Windows:**
+```powershell
+# Download slip-windows-amd64.zip from releases page
+# Extract the .exe file
+# Add to PATH or run directly
+
+.\slip-windows-amd64.exe --help
+```
+
+**Verify Checksums:**
+```bash
+# Download the .sha256 file and verify
+sha256sum -c slip-linux-amd64.sha256
+# or on macOS:
+shasum -a 256 -c slip-darwin-arm64.sha256
+```
 
 ### From Source
+
+**Prerequisites:**
+- Go 1.22 or higher
+- Git
+- Terminal with ANSI color support
+- (Optional) tmux for pane integration
 
 ```bash
 # Clone the repository
@@ -165,6 +218,21 @@ go install ./cmd/slip
 
 # Verify installation
 slip --help
+```
+
+### Build from Source (All Platforms)
+
+```bash
+# Clone repository
+git clone https://github.com/yourusername/slip.git
+cd slip
+
+# Build for all platforms using build scripts
+./scripts/build.sh v1.0.0      # Unix/Linux/macOS
+# or
+.\scripts\build.ps1 v1.0.0     # Windows PowerShell
+
+# Binaries will be in build/ directory
 ```
 
 ### Platform Support
@@ -540,11 +608,36 @@ go build ./cmd/slip
 # Production build with optimizations
 go build -ldflags="-s -w" -o slip ./cmd/slip
 
-# Cross-compile for different platforms
+# Build all platforms with version info using build scripts
+./scripts/build.sh v1.0.0      # Creates binaries for all platforms
+.\scripts\build.ps1 v1.0.0     # Windows PowerShell version
+
+# Manual cross-compile for specific platform
 GOOS=linux GOARCH=amd64 go build -o slip-linux ./cmd/slip
 GOOS=darwin GOARCH=amd64 go build -o slip-macos ./cmd/slip
 GOOS=windows GOARCH=amd64 go build -o slip.exe ./cmd/slip
 ```
+
+### Release Process
+
+Slip uses GitHub Actions for automated releases:
+
+1. **Create and push a version tag:**
+   ```bash
+   git tag -a v1.0.0 -m "Release version 1.0.0"
+   git push origin v1.0.0
+   ```
+
+2. **GitHub Actions automatically:**
+   - Runs all tests on Linux, macOS, and Windows
+   - Builds binaries for all platforms (Linux, macOS Intel/ARM, Windows)
+   - Generates SHA256 checksums
+   - Creates release archives
+   - Publishes GitHub release with binaries attached
+
+3. **Users download from:** [GitHub Releases](https://github.com/yourusername/slip/releases)
+
+See `.github/workflows/release.yml` for the complete workflow.
 
 ## Contributing
 
