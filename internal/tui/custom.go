@@ -23,6 +23,7 @@ type CustomTUI struct {
 	screen      Screen
 	prevScreen  Screen
 	running     bool
+	input       *engine.InputReader
 
 	// Menus
 	homeMenu       *ui.Menu
@@ -176,11 +177,11 @@ func (t *CustomTUI) Run() error {
 	}()
 
 	// Create input reader
-	input := engine.NewInputReader()
-	if err := input.Start(); err != nil {
+	t.input = engine.NewInputReader()
+	if err := t.input.Start(); err != nil {
 		return fmt.Errorf("failed to start input reader: %w", err)
 	}
-	defer input.Stop()
+	defer t.input.Stop()
 
 	// Create screen buffer
 	screen := engine.NewScreen(t.width, t.height, os.Stdout)
@@ -203,7 +204,7 @@ func (t *CustomTUI) Run() error {
 	for t.running {
 		// Handle input and events - blocking select for better responsiveness
 		select {
-		case inp := <-input.Channel():
+		case inp := <-t.input.Channel():
 			t.handleInput(inp)
 			// Render immediately after input for instant feedback
 			screen.Clear()
@@ -227,6 +228,11 @@ func (t *CustomTUI) Run() error {
 	}
 
 	return nil
+}
+
+// InputReader returns the active input reader for coordination with the engine.
+func (t *CustomTUI) InputReader() *engine.InputReader {
+	return t.input
 }
 
 // Stop gracefully stops the TUI

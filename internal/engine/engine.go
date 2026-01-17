@@ -14,6 +14,7 @@ import (
 type Engine struct {
 	screen      *Screen
 	input       *InputReader
+	ownsInput   bool
 	currentGame Game
 	running     bool
 	paused      bool
@@ -71,6 +72,7 @@ func NewEngine(width, height, fps int) *Engine {
 		scoreBoard: sb,
 		playerName: playerName,
 		showFPS:    cfg.ShowFPSCounter,
+		ownsInput:  true,
 	}
 	e.screen = NewScreen(width, height, e.writer)
 	e.input = NewInputReader()
@@ -128,6 +130,16 @@ func (e *Engine) SetGame(game Game) error {
 	return game.Start()
 }
 
+// UseInputReader shares an existing input reader with the engine.
+// The engine will not start/stop the reader when using this.
+func (e *Engine) UseInputReader(reader *InputReader) {
+	if reader == nil {
+		return
+	}
+	e.input = reader
+	e.ownsInput = false
+}
+
 // SetOnExit sets the callback for when the engine exits
 func (e *Engine) SetOnExit(fn func()) {
 	e.onExit = fn
@@ -161,11 +173,16 @@ func (e *Engine) Run() error {
 		term.ResetStyle(e.writer)
 	}()
 
-	// Start input reader
-	if err := e.input.Start(); err != nil {
-		return fmt.Errorf("failed to start input reader: %w", err)
+	if e.input == nil {
+		return fmt.Errorf("input reader not set")
 	}
-	defer e.input.Stop()
+	// Start input reader if we own it
+	if e.ownsInput {
+		if err := e.input.Start(); err != nil {
+			return fmt.Errorf("failed to start input reader: %w", err)
+		}
+		defer e.input.Stop()
+	}
 
 	e.running = true
 	ticker := time.NewTicker(time.Second / time.Duration(e.targetFPS))

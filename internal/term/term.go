@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+
+	xterm "golang.org/x/term"
 )
 
 // ANSI escape sequences
@@ -126,6 +128,12 @@ func ResetStyle(w io.Writer) {
 
 // Size returns the terminal size (width, height)
 func Size() (int, int, error) {
+	if w, h, err := xterm.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 && h > 0 {
+		return w, h, nil
+	}
+	if w, h, err := xterm.GetSize(int(os.Stdin.Fd())); err == nil && w > 0 && h > 0 {
+		return w, h, nil
+	}
 	if runtime.GOOS == "windows" {
 		return sizeWindows()
 	}

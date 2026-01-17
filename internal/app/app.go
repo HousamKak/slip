@@ -76,6 +76,11 @@ func (a *App) launchGame(id string) error {
 	}
 
 	eng := engine.NewEngine(a.width, a.height, a.fps)
+	if provider, ok := a.tui.(interface{ InputReader() *engine.InputReader }); ok {
+		if reader := provider.InputReader(); reader != nil {
+			eng.UseInputReader(reader)
+		}
+	}
 	if err := eng.SetGame(game); err != nil {
 		return err
 	}
@@ -89,6 +94,11 @@ func (a *App) launchAnimation(id string) error {
 	}
 
 	eng := engine.NewEngine(a.width, a.height, a.fps)
+	if provider, ok := a.tui.(interface{ InputReader() *engine.InputReader }); ok {
+		if reader := provider.InputReader(); reader != nil {
+			eng.UseInputReader(reader)
+		}
+	}
 	if err := eng.SetGame(anim); err != nil {
 		return err
 	}
