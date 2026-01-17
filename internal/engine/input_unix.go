@@ -21,7 +21,7 @@ func (r *InputReader) setRawModeUnix() error {
 func (r *InputReader) restoreModeUnix() {
 	if r.oldState != nil {
 		fd := int(os.Stdin.Fd())
-		term.Restore(fd, r.oldState.(*term.State))
+		_ = term.Restore(fd, r.oldState.(*term.State))
 	}
 }
 
