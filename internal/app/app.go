@@ -15,7 +15,6 @@ type App struct {
 	tui          tui.TUI
 	gameRegistry *games.Registry
 	animRegistry *animations.Registry
-	engine       *engine.Engine
 	width        int
 	height       int
 	fps          int
@@ -77,7 +76,14 @@ func (a *App) launchGame(id string) error {
 	}
 
 	eng := engine.NewEngine(a.width, a.height, a.fps)
-	eng.SetGame(game)
+	if provider, ok := a.tui.(interface{ InputReader() *engine.InputReader }); ok {
+		if reader := provider.InputReader(); reader != nil {
+			eng.UseInputReader(reader)
+		}
+	}
+	if err := eng.SetGame(game); err != nil {
+		return err
+	}
 	return eng.Run()
 }
 
@@ -88,7 +94,14 @@ func (a *App) launchAnimation(id string) error {
 	}
 
 	eng := engine.NewEngine(a.width, a.height, a.fps)
-	eng.SetGame(anim)
+	if provider, ok := a.tui.(interface{ InputReader() *engine.InputReader }); ok {
+		if reader := provider.InputReader(); reader != nil {
+			eng.UseInputReader(reader)
+		}
+	}
+	if err := eng.SetGame(anim); err != nil {
+		return err
+	}
 	return eng.Run()
 }
 

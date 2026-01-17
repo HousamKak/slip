@@ -339,9 +339,9 @@ func (t *BubbleTeaTUI) handleSelection() tea.Cmd {
 			t.updateMenuItems()
 		} else if t.gameLauncher != nil {
 			// Launch game - this will take over the terminal
-			t.program.ReleaseTerminal()
-			t.gameLauncher(selected.ID)
-			t.program.RestoreTerminal()
+			_ = t.program.ReleaseTerminal()
+			_ = t.gameLauncher(selected.ID)
+			_ = t.program.RestoreTerminal()
 		}
 
 	case ScreenAnimations:
@@ -351,9 +351,9 @@ func (t *BubbleTeaTUI) handleSelection() tea.Cmd {
 			t.updateMenuItems()
 		} else if t.animLauncher != nil {
 			// Launch animation - this will take over the terminal
-			t.program.ReleaseTerminal()
-			t.animLauncher(selected.ID)
-			t.program.RestoreTerminal()
+			_ = t.program.ReleaseTerminal()
+			_ = t.animLauncher(selected.ID)
+			_ = t.program.RestoreTerminal()
 		}
 	}
 

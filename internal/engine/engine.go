@@ -14,6 +14,7 @@ import (
 type Engine struct {
 	screen      *Screen
 	input       *InputReader
+	ownsInput   bool
 	currentGame Game
 	running     bool
 	paused      bool
@@ -71,6 +72,7 @@ func NewEngine(width, height, fps int) *Engine {
 		scoreBoard: sb,
 		playerName: playerName,
 		showFPS:    cfg.ShowFPSCounter,
+		ownsInput:  true,
 	}
 	e.screen = NewScreen(width, height, e.writer)
 	e.input = NewInputReader()
@@ -81,7 +83,7 @@ func NewEngine(width, height, fps int) *Engine {
 // SetGame sets the current game
 func (e *Engine) SetGame(game Game) error {
 	if e.currentGame != nil {
-		e.currentGame.Stop()
+		_ = e.currentGame.Stop()
 	}
 	e.currentGame = game
 
@@ -128,6 +130,16 @@ func (e *Engine) SetGame(game Game) error {
 	return game.Start()
 }
 
+// UseInputReader shares an existing input reader with the engine.
+// The engine will not start/stop the reader when using this.
+func (e *Engine) UseInputReader(reader *InputReader) {
+	if reader == nil {
+		return
+	}
+	e.input = reader
+	e.ownsInput = false
+}
+
 // SetOnExit sets the callback for when the engine exits
 func (e *Engine) SetOnExit(fn func()) {
 	e.onExit = fn
@@ -161,11 +173,16 @@ func (e *Engine) Run() error {
 		term.ResetStyle(e.writer)
 	}()
 
-	// Start input reader
-	if err := e.input.Start(); err != nil {
-		return fmt.Errorf("failed to start input reader: %w", err)
+	if e.input == nil {
+		return fmt.Errorf("input reader not set")
 	}
-	defer e.input.Stop()
+	// Start input reader if we own it
+	if e.ownsInput {
+		if err := e.input.Start(); err != nil {
+			return fmt.Errorf("failed to start input reader: %w", err)
+		}
+		defer e.input.Stop()
+	}
 
 	e.running = true
 	ticker := time.NewTicker(time.Second / time.Duration(e.targetFPS))
@@ -181,8 +198,33 @@ func (e *Engine) Run() error {
 	frameThisSecond := 0
 
 	for e.running {
+		// Process all pending inputs first for responsiveness
+		// This prevents input lag when inputs arrive faster than frame rate
+		for {
+			select {
+			case input := <-e.input.Channel():
+				if input.IsQuit() {
+					e.running = false
+					break
+				}
+				if input.Key == KeyEscape || input.Key == KeyRune && (input.Rune == 'q' || input.Rune == 'Q') {
+					e.running = false
+					break
+				}
+				if e.currentGame != nil && !e.paused {
+					_ = e.currentGame.HandleInput(input)
+				}
+			default:
+				// No more inputs to process
+				goto doneProcessingInputs
+			}
+		}
+	doneProcessingInputs:
+
+		// Now wait for next frame or other events
 		select {
 		case input := <-e.input.Channel():
+			// Handle any new input that arrived while we were waiting
 			if input.IsQuit() {
 				e.running = false
 				continue
@@ -192,7 +234,7 @@ func (e *Engine) Run() error {
 				continue
 			}
 			if e.currentGame != nil && !e.paused {
-				e.currentGame.HandleInput(input)
+				_ = e.currentGame.HandleInput(input)
 			}
 
 		case <-ticker.C:
@@ -211,7 +253,7 @@ func (e *Engine) Run() error {
 			// Render
 			e.screen.Clear()
 			if e.currentGame != nil {
-				e.currentGame.Render(e.screen)
+				_ = e.currentGame.Render(e.screen)
 			}
 
 			// Draw FPS if enabled
@@ -239,7 +281,7 @@ func (e *Engine) Run() error {
 	}
 
 	if e.currentGame != nil {
-		e.currentGame.Stop()
+		_ = e.currentGame.Stop()
 	}
 
 	if e.onExit != nil {
@@ -300,7 +342,7 @@ func (e *Engine) RunOnce(dt float64) error {
 			return fmt.Errorf("quit requested")
 		}
 		if e.currentGame != nil {
-			e.currentGame.HandleInput(input)
+			_ = e.currentGame.HandleInput(input)
 		}
 	default:
 	}
@@ -315,7 +357,7 @@ func (e *Engine) RunOnce(dt float64) error {
 	// Render
 	e.screen.Clear()
 	if e.currentGame != nil {
-		e.currentGame.Render(e.screen)
+		_ = e.currentGame.Render(e.screen)
 	}
 	e.screen.Flush()
 

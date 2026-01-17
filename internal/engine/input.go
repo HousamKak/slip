@@ -3,6 +3,7 @@ package engine
 import (
 	"os"
 	"runtime"
+	"sync"
 	"time"
 )
 
@@ -104,6 +105,7 @@ type InputReader struct {
 	ch       chan Input
 	done     chan struct{}
 	oldState interface{} // Platform-specific terminal state
+	wg       sync.WaitGroup
 }
 
 // NewInputReader creates a new input reader
@@ -120,6 +122,7 @@ func (r *InputReader) Start() error {
 		return err
 	}
 
+	r.wg.Add(1)
 	go r.readLoop()
 	return nil
 }
@@ -127,6 +130,7 @@ func (r *InputReader) Start() error {
 // Stop stops reading input
 func (r *InputReader) Stop() {
 	close(r.done)
+	r.wg.Wait() // Wait for readLoop to finish
 	r.restoreMode()
 }
 
@@ -146,14 +150,24 @@ func (r *InputReader) ReadWithTimeout(timeout time.Duration) (Input, bool) {
 }
 
 func (r *InputReader) readLoop() {
+	defer r.wg.Done()
+
+	// Lock this goroutine to an OS thread for better I/O responsiveness
+	// This ensures the goroutine wakes up immediately when stdin has data
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	buf := make([]byte, 16)
 	for {
+		// Check if we should stop before blocking on read
 		select {
 		case <-r.done:
 			return
 		default:
 		}
 
+		// Blocking read from stdin
+		// By locking to an OS thread, the scheduler will wake this up faster
 		n, err := os.Stdin.Read(buf)
 		if err != nil {
 			continue
@@ -162,6 +176,7 @@ func (r *InputReader) readLoop() {
 			continue
 		}
 
+		// Parse and send inputs immediately
 		inputs := r.parseInput(buf[:n])
 		for _, input := range inputs {
 			select {

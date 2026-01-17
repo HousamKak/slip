@@ -1,0 +1,40 @@
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+linters-settings:
+  errcheck:
+    # Exclude test files from strict errcheck
+    exclude-functions:
+      # Testing helpers
+      - (*testing.T).Errorf
+      - (*testing.T).FailNow
+      - (*testing.T).Fatal
+      - (*testing.T).Fatalf
+      - (*testing.T).Log
+      - (*testing.T).Logf
+      - (*testing.T).Skip
+      - (*testing.T).Skipf
+      - (*testing.T).SkipNow
+
+issues:
+  exclude-rules:
+    # Exclude errcheck in test files for non-critical calls
+    - path: _test\.go
+      linters:
+        - errcheck
+      text: "Error return value of .*(Init|Update|HandleInput|Render|AddScore|Encode).* is not checked"
+
+    # Exclude errcheck for known intentional ignores
+    - linters:
+        - errcheck
+      text: "Error return value of .*(fmt\\.Sscanf|setConsoleMode\\.Call).* is not checked"
+
+run:
+  timeout: 5m
+  tests: true

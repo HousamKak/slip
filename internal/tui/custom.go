@@ -23,12 +23,12 @@ type CustomTUI struct {
 	screen      Screen
 	prevScreen  Screen
 	running     bool
+	input       *engine.InputReader
 
 	// Menus
 	homeMenu       *ui.Menu
 	gamesMenu      *ui.Menu
 	animationsMenu *ui.Menu
-	storeMenu      *ui.Menu
 
 	// Registries
 	gameRegistry *games.Registry
@@ -44,9 +44,6 @@ type CustomTUI struct {
 	// Callbacks
 	gameLauncher func(string) error
 	animLauncher func(string) error
-
-	// Engine for rendering
-	engine *engine.Engine
 
 	// Theme
 	theme ui.Theme
@@ -180,11 +177,11 @@ func (t *CustomTUI) Run() error {
 	}()
 
 	// Create input reader
-	input := engine.NewInputReader()
-	if err := input.Start(); err != nil {
+	t.input = engine.NewInputReader()
+	if err := t.input.Start(); err != nil {
 		return fmt.Errorf("failed to start input reader: %w", err)
 	}
-	defer input.Stop()
+	defer t.input.Stop()
 
 	// Create screen buffer
 	screen := engine.NewScreen(t.width, t.height, os.Stdout)
@@ -207,7 +204,7 @@ func (t *CustomTUI) Run() error {
 	for t.running {
 		// Handle input and events - blocking select for better responsiveness
 		select {
-		case inp := <-input.Channel():
+		case inp := <-t.input.Channel():
 			t.handleInput(inp)
 			// Render immediately after input for instant feedback
 			screen.Clear()
@@ -231,6 +228,11 @@ func (t *CustomTUI) Run() error {
 	}
 
 	return nil
+}
+
+// InputReader returns the active input reader for coordination with the engine.
+func (t *CustomTUI) InputReader() *engine.InputReader {
+	return t.input
 }
 
 // Stop gracefully stops the TUI
@@ -340,7 +342,7 @@ func (t *CustomTUI) handleGamesInput(input engine.Input) {
 			if selected.ID == "back" {
 				t.screen = ScreenHome
 			} else if t.gameLauncher != nil {
-				t.gameLauncher(selected.ID)
+				_ = t.gameLauncher(selected.ID)
 			}
 		}
 	}
@@ -358,7 +360,7 @@ func (t *CustomTUI) handleAnimationsInput(input engine.Input) {
 			if selected.ID == "back" {
 				t.screen = ScreenHome
 			} else if t.animLauncher != nil {
-				t.animLauncher(selected.ID)
+				_ = t.animLauncher(selected.ID)
 			}
 		}
 	}
@@ -401,10 +403,8 @@ func (t *CustomTUI) handleStoreInput(input engine.Input) {
 		}
 	case engine.KeyEnter:
 		// Install selected game (placeholder - would need confirmation dialog)
-		if t.storeSelectedIdx < len(t.storeGames) {
-			// For now, just show it's not implemented
-			// In production, this would trigger installation
-		}
+		// For now, this is not implemented
+		// In production, this would trigger installation
 	}
 }
 
@@ -534,7 +534,7 @@ func (t *CustomTUI) executeCommand(cmdLine string) {
 			// Also save to config
 			cfg, _ := state.LoadConfig()
 			cfg.Theme = themeName
-			state.SaveConfig(cfg)
+			_ = state.SaveConfig(cfg)
 			return nil
 		},
 		LaunchGame: func(gameID string) error {
