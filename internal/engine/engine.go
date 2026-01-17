@@ -181,8 +181,33 @@ func (e *Engine) Run() error {
 	frameThisSecond := 0
 
 	for e.running {
+		// Process all pending inputs first for responsiveness
+		// This prevents input lag when inputs arrive faster than frame rate
+		for {
+			select {
+			case input := <-e.input.Channel():
+				if input.IsQuit() {
+					e.running = false
+					break
+				}
+				if input.Key == KeyEscape || input.Key == KeyRune && (input.Rune == 'q' || input.Rune == 'Q') {
+					e.running = false
+					break
+				}
+				if e.currentGame != nil && !e.paused {
+					e.currentGame.HandleInput(input)
+				}
+			default:
+				// No more inputs to process
+				goto doneProcessingInputs
+			}
+		}
+	doneProcessingInputs:
+
+		// Now wait for next frame or other events
 		select {
 		case input := <-e.input.Channel():
+			// Handle any new input that arrived while we were waiting
 			if input.IsQuit() {
 				e.running = false
 				continue
