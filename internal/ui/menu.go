@@ -43,21 +43,27 @@ func DefaultMenuStyle() MenuStyle {
 		Border:       engine.Style{FG: engine.ColorCyan},
 		Title:        engine.Style{FG: engine.ColorBrightWhite, Bold: true},
 		Item:         engine.Style{FG: engine.ColorWhite},
-		ItemSelected: engine.Style{FG: engine.ColorBlack, BG: engine.ColorCyan, Bold: true},
+		ItemSelected: engine.Style{FG: engine.ColorBlack, BG: engine.ColorCyan, Bold: true, Reverse: false},
 		ItemDisabled: engine.Style{FG: engine.ColorBrightBlack},
 		Description:  engine.Style{FG: engine.ColorBrightBlack},
-		Highlight:    '>',
-		BoxStyle:     engine.BoxStyleRounded,
+		Highlight:    '▸',
+		BoxStyle:     engine.BoxStyleDouble,
 	}
 }
 
 // NewMenu creates a new menu
 func NewMenu(title string, items []MenuItem) *Menu {
-	width := len(title) + 4
+	// Calculate width: label + "▸ " (2) + "N. " (3) + padding (4) + border (2)
+	width := len(title) + 6
 	for _, item := range items {
-		if len(item.Label)+6 > width {
-			width = len(item.Label) + 6
+		itemWidth := len(item.Label) + 11 // 2 (indicator) + 3 (number) + 4 (padding) + 2 (border)
+		if itemWidth > width {
+			width = itemWidth
 		}
+	}
+	// Ensure minimum width for descriptions
+	if width < 25 {
+		width = 25
 	}
 	return &Menu{
 		Title:      title,

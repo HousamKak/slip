@@ -189,8 +189,22 @@ func (s *Spinner) Render(screen *engine.Screen) {
 	screen.Set(s.X, s.Y, s.Frames[s.Frame], s.Style)
 }
 
-// Logo renders the SLIP logo
+// Logo renders the SLIP logo (simple ASCII - works everywhere)
 func DrawLogo(screen *engine.Screen, x, y int, style engine.Style) {
+	logo := []string{
+		" ____  _     ___ ____  ",
+		"/ ___|| |   |_ _|  _ \\ ",
+		"\\___ \\| |    | || |_) |",
+		" ___) | |___ | ||  __/ ",
+		"|____/|_____|___|_|    ",
+	}
+	for i, line := range logo {
+		screen.DrawText(x, y+i, line, style)
+	}
+}
+
+// DrawLogoCompact renders a compact SLIP logo for smaller spaces
+func DrawLogoCompact(screen *engine.Screen, x, y int, style engine.Style) {
 	logo := []string{
 		"╔═╗╦  ╦╔═╗",
 		"╚═╗║  ║╠═╝",

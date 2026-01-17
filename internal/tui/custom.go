@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"slip/internal/animations"
@@ -34,10 +35,10 @@ type CustomTUI struct {
 	animRegistry *animations.Registry
 
 	// Store
-	storeClient     *store.Client
-	storeGames      []store.GameEntry
-	storeLoading    bool
-	storeError      string
+	storeClient      *store.Client
+	storeGames       []store.GameEntry
+	storeLoading     bool
+	storeError       string
 	storeSelectedIdx int
 
 	// Callbacks
@@ -49,6 +50,15 @@ type CustomTUI struct {
 
 	// Theme
 	theme ui.Theme
+
+	// Command system
+	commandMode    bool
+	commandInput   string
+	commandCursor  int
+	commandRegistry *ui.CommandRegistry
+	commandHistory *ui.CommandHistory
+	commandMessage string
+	commandError   error
 }
 
 // NewCustomTUI creates a new custom TUI
@@ -61,17 +71,20 @@ func NewCustomTUI(cfg Config) (*CustomTUI, error) {
 	}
 
 	tui := &CustomTUI{
-		width:        cfg.Width,
-		height:       cfg.Height,
-		fps:          cfg.FPS,
-		screen:       ScreenHome,
-		gameRegistry: games.NewRegistry(),
-		animRegistry: animations.NewRegistry(),
-		storeClient:  store.NewClient(),
-		theme:        theme,
+		width:           cfg.Width,
+		height:          cfg.Height,
+		fps:             cfg.FPS,
+		screen:          ScreenHome,
+		gameRegistry:    games.NewRegistry(),
+		animRegistry:    animations.NewRegistry(),
+		storeClient:     store.NewClient(),
+		theme:           theme,
+		commandRegistry: ui.NewCommandRegistry(),
+		commandHistory:  ui.NewCommandHistory(100),
 	}
 
 	tui.initMenus()
+	tui.initCommands()
 	return tui, nil
 }
 
@@ -118,6 +131,39 @@ func (t *CustomTUI) initMenus() {
 	})
 	t.animationsMenu = ui.NewMenu("Animations", animItems)
 	t.animationsMenu.ShowNumbers = true
+}
+
+func (t *CustomTUI) initCommands() {
+	// Register navigation commands
+	t.commandRegistry.Register(ui.NewNavigationCommand("home", "home", "Go to home screen"))
+	t.commandRegistry.Register(ui.NewNavigationCommand("games", "games", "Go to games menu"))
+	t.commandRegistry.Register(ui.NewNavigationCommand("animations", "animations", "Go to animations menu"))
+	t.commandRegistry.Register(ui.NewNavigationCommand("store", "store", "Go to store"))
+	t.commandRegistry.Register(ui.NewNavigationCommand("settings", "settings", "Go to settings"))
+	t.commandRegistry.Register(ui.NewNavigationCommand("back", "back", "Go back"))
+
+	// Register theme command
+	themes := ui.ListThemes()
+	t.commandRegistry.Register(ui.NewThemeCommand(themes))
+
+	// Register game command
+	var gameIDs []string
+	for _, info := range t.gameRegistry.List() {
+		gameIDs = append(gameIDs, info.ID)
+	}
+	t.commandRegistry.Register(ui.NewPlayCommand(gameIDs))
+
+	// Register animation command
+	var animIDs []string
+	for _, info := range t.animRegistry.List() {
+		animIDs = append(animIDs, info.ID)
+	}
+	t.commandRegistry.Register(ui.NewAnimateCommand(animIDs))
+
+	// Register system commands
+	t.commandRegistry.Register(ui.NewQuitCommand())
+	t.commandRegistry.Register(ui.NewClearCommand())
+	t.commandRegistry.Register(ui.NewHelpCommand(t.commandRegistry))
 }
 
 // Run starts the TUI
@@ -214,6 +260,22 @@ func (t *CustomTUI) RegisterAnimationLauncher(fn func(animID string) error) {
 }
 
 func (t *CustomTUI) handleInput(input engine.Input) {
+	// Handle command mode
+	if t.commandMode {
+		t.handleCommandInput(input)
+		return
+	}
+
+	// Global command mode trigger
+	if input.Key == engine.KeyRune && input.Rune == ':' {
+		t.commandMode = true
+		t.commandInput = ""
+		t.commandCursor = 0
+		t.commandMessage = ""
+		t.commandError = nil
+		return
+	}
+
 	// Global quit
 	if input.IsQuit() {
 		t.running = false
@@ -363,6 +425,139 @@ func (t *CustomTUI) loadStore() {
 	t.storeSelectedIdx = 0
 }
 
+func (t *CustomTUI) handleCommandInput(input engine.Input) {
+	switch input.Key {
+	case engine.KeyEscape:
+		// Exit command mode
+		t.commandMode = false
+		t.commandInput = ""
+		t.commandMessage = ""
+		t.commandError = nil
+
+	case engine.KeyEnter:
+		// Execute command
+		t.executeCommand(t.commandInput)
+		t.commandHistory.Add(t.commandInput)
+		t.commandMode = false
+		t.commandInput = ""
+
+	case engine.KeyTab:
+		// Autocomplete
+		suggestions := t.getCommandSuggestions()
+		if len(suggestions) == 1 {
+			// Single match - complete it
+			cmdName, args := ui.ParseCommandLine(t.commandInput)
+			if len(args) == 0 && !strings.Contains(t.commandInput, " ") {
+				// Completing command name
+				t.commandInput = suggestions[0] + " "
+			} else if len(args) > 0 {
+				// Completing argument
+				t.commandInput = cmdName + " " + suggestions[0]
+			}
+		}
+
+	case engine.KeyBackspace:
+		// Delete character
+		if len(t.commandInput) > 0 {
+			t.commandInput = t.commandInput[:len(t.commandInput)-1]
+		}
+
+	case engine.KeyUp:
+		// Previous command in history
+		if prev := t.commandHistory.Previous(); prev != "" {
+			t.commandInput = prev
+		}
+
+	case engine.KeyDown:
+		// Next command in history
+		if next := t.commandHistory.Next(); next != "" {
+			t.commandInput = next
+		} else {
+			t.commandInput = ""
+		}
+
+	case engine.KeyRune:
+		// Add character to input
+		t.commandInput += string(input.Rune)
+	}
+}
+
+func (t *CustomTUI) executeCommand(cmdLine string) {
+	// Clear previous messages
+	t.commandMessage = ""
+	t.commandError = nil
+
+	// Parse command
+	cmdName, args := ui.ParseCommandLine(cmdLine)
+	if cmdName == "" {
+		return
+	}
+
+	// Get command
+	cmd, ok := t.commandRegistry.Get(cmdName)
+	if !ok {
+		t.commandError = fmt.Errorf("unknown command: %s", cmdName)
+		return
+	}
+
+	// Create command context
+	ctx := &ui.CommandContext{
+		TUI: t,
+		Output: func(msg string, err error) {
+			t.commandMessage = msg
+			t.commandError = err
+		},
+		SetScreen: func(screen string) {
+			switch screen {
+			case "quit":
+				t.running = false
+			case "home":
+				t.screen = ScreenHome
+			case "games":
+				t.screen = ScreenGames
+			case "animations":
+				t.screen = ScreenAnimations
+			case "store":
+				t.screen = ScreenStore
+				if len(t.storeGames) == 0 && !t.storeLoading && t.storeError == "" {
+					go t.loadStore()
+				}
+			case "settings":
+				t.screen = ScreenSettings
+			case "back":
+				t.screen = t.prevScreen
+			}
+		},
+		SetTheme: func(themeName string) error {
+			theme := ui.GetTheme(themeName)
+			t.theme = theme
+			// Also save to config
+			cfg, _ := state.LoadConfig()
+			cfg.Theme = themeName
+			state.SaveConfig(cfg)
+			return nil
+		},
+		LaunchGame: func(gameID string) error {
+			if t.gameLauncher != nil {
+				return t.gameLauncher(gameID)
+			}
+			return fmt.Errorf("game launcher not available")
+		},
+		LaunchAnim: func(animID string) error {
+			if t.animLauncher != nil {
+				return t.animLauncher(animID)
+			}
+			return fmt.Errorf("animation launcher not available")
+		},
+	}
+
+	// Execute command
+	err := cmd.Execute(ctx, args)
+	if err != nil {
+		t.commandError = err
+	}
+}
+
 func (t *CustomTUI) handleSettingsInput(input engine.Input) {
 	if input.Key == engine.KeyEscape || input.Key == engine.KeyEnter {
 		t.screen = ScreenHome
@@ -384,76 +579,212 @@ func (t *CustomTUI) render(screen *engine.Screen) {
 	case ScreenSettings:
 		t.renderSettings(screen)
 	}
+
+	// Render command bar if in command mode
+	if t.commandMode {
+		t.renderCommandBar(screen)
+	}
+
+	// Render command message/error if any
+	if t.commandMessage != "" || t.commandError != nil {
+		t.renderCommandMessage(screen)
+	}
+}
+
+func (t *CustomTUI) renderCommandBar(screen *engine.Screen) {
+	// Get autocomplete suggestions
+	suggestions := t.getCommandSuggestions()
+
+	// Draw separator - move up if we have suggestions
+	sepY := t.height - 3
+	if len(suggestions) > 0 {
+		sepY = t.height - 4
+	}
+
+	borderStyle := engine.Style{FG: t.theme.Accent, Bold: true}
+	for x := 0; x < t.width; x++ {
+		screen.Set(x, sepY, '═', borderStyle)
+	}
+
+	// Draw suggestions line if we have any
+	if len(suggestions) > 0 {
+		sugY := t.height - 3
+		sugText := "  " + strings.Join(suggestions, "  ")
+		if len(sugText) > t.width-2 {
+			sugText = sugText[:t.width-5] + "..."
+		}
+		screen.DrawText(0, sugY, sugText, engine.Style{FG: t.theme.Secondary})
+	}
+
+	// Draw command input
+	inputY := t.height - 2
+	inputStyle := engine.Style{FG: t.theme.Primary, Bold: true}
+	screen.DrawText(0, inputY, ":"+t.commandInput+"█", inputStyle)
+
+	// Draw hint on the right
+	hint := "Tab Complete │ Esc Cancel │ Enter Run"
+	hintX := t.width - len(hint)
+	if hintX > len(t.commandInput)+3 {
+		screen.DrawText(hintX, inputY, hint, engine.Style{FG: t.theme.TextDim})
+	}
+}
+
+func (t *CustomTUI) getCommandSuggestions() []string {
+	if t.commandInput == "" {
+		// Show all available commands when input is empty
+		return []string{"quit", "play", "animate", "theme", "help", "games", "store"}
+	}
+
+	// Parse what we have so far
+	cmdName, args := ui.ParseCommandLine(t.commandInput)
+
+	// If we're still typing the command name
+	if len(args) == 0 && !strings.Contains(t.commandInput, " ") {
+		return t.commandRegistry.Complete(cmdName)
+	}
+
+	// If we have a command, get argument completions
+	if cmd, ok := t.commandRegistry.Get(cmdName); ok {
+		return cmd.Complete(args)
+	}
+
+	return nil
+}
+
+func (t *CustomTUI) renderCommandMessage(screen *engine.Screen) {
+	// Show message or error temporarily at the top
+	y := 0
+	if t.commandError != nil {
+		msg := "Error: " + t.commandError.Error()
+		screen.DrawTextCentered(y, msg, engine.Style{FG: t.theme.Error, Bold: true})
+	} else if t.commandMessage != "" {
+		screen.DrawTextCentered(y, t.commandMessage, engine.Style{FG: t.theme.Success, Bold: true})
+	}
 }
 
 func (t *CustomTUI) renderHome(screen *engine.Screen) {
-	// Draw logo
-	ui.DrawLogo(screen, (t.width-11)/2, 2, engine.Style{FG: t.theme.Primary, Bold: true})
+	// Draw logo with style (24 chars wide, 5 lines tall)
+	logoWidth := 24
+	logoY := 2
+	ui.DrawLogo(screen, (t.width-logoWidth)/2, logoY, engine.Style{FG: t.theme.Primary, Bold: true})
 
 	// Draw subtitle
-	subtitle := "Terminal Entertainment Platform"
-	screen.DrawTextCentered(6, subtitle, engine.Style{FG: t.theme.TextDim})
+	subtitle := "Terminal Entertainment"
+	screen.DrawTextCentered(8, subtitle, engine.Style{FG: t.theme.TextDim})
 
-	// Draw menu
+	// Draw menu with extra padding
 	t.homeMenu.CenterOn(t.width, t.height)
-	t.homeMenu.Y = 8
+	t.homeMenu.Y = 10
 	t.homeMenu.Render(screen)
 
-	// Draw footer
-	footer := "[↑↓] Navigate  [Enter] Select  [Q] Quit"
+	// Draw footer bar with double line border
+	footerY := t.height - 3
+	borderStyle := engine.Style{FG: t.theme.Border}
+
+	// Draw footer border
+	for x := 0; x < t.width; x++ {
+		screen.Set(x, footerY, '═', borderStyle)
+	}
+
+	// Draw footer text
+	footer := "↑↓ Navigate │ Enter Select │ : Command │ Q Quit"
 	screen.DrawTextCentered(t.height-2, footer, engine.Style{FG: t.theme.TextDim})
 
+	// Version in bottom right
 	version := "v1.0.0"
 	screen.DrawText(t.width-len(version)-2, t.height-1, version,
 		engine.Style{FG: t.theme.TextDim})
 }
 
 func (t *CustomTUI) renderGames(screen *engine.Screen) {
-	// Draw title
-	screen.DrawTextCentered(1, "Games", engine.Style{FG: t.theme.Primary, Bold: true})
+	// Draw title with decorative border
+	title := "╔═══ Games ═══╗"
+	screen.DrawTextCentered(1, title, engine.Style{FG: t.theme.Primary, Bold: true})
+
+	// Count available games
+	gameCount := len(t.gamesMenu.Items) - 1 // Exclude "back" item
+	countText := fmt.Sprintf("[%d available]", gameCount)
+	screen.DrawTextCentered(2, countText, engine.Style{FG: t.theme.TextDim})
 
 	// Draw menu
 	t.gamesMenu.CenterOn(t.width, t.height)
 	t.gamesMenu.Y = 4
 	t.gamesMenu.Render(screen)
 
-	// Draw footer
-	footer := "[↑↓] Navigate  [Enter] Play  [Esc] Back"
+	// Draw footer bar
+	footerY := t.height - 3
+	borderStyle := engine.Style{FG: t.theme.Border}
+	for x := 0; x < t.width; x++ {
+		screen.Set(x, footerY, '═', borderStyle)
+	}
+
+	footer := "↑↓ Navigate │ Enter Play │ Esc Back"
 	screen.DrawTextCentered(t.height-2, footer, engine.Style{FG: t.theme.TextDim})
 }
 
 func (t *CustomTUI) renderAnimations(screen *engine.Screen) {
-	// Draw title
-	screen.DrawTextCentered(1, "Animations", engine.Style{FG: t.theme.Primary, Bold: true})
+	// Draw title with decorative border
+	title := "╔═══ Animations ═══╗"
+	screen.DrawTextCentered(1, title, engine.Style{FG: t.theme.Primary, Bold: true})
+
+	// Count available animations
+	animCount := len(t.animationsMenu.Items) - 1 // Exclude "back" item
+	countText := fmt.Sprintf("[%d available]", animCount)
+	screen.DrawTextCentered(2, countText, engine.Style{FG: t.theme.TextDim})
 
 	// Draw menu
 	t.animationsMenu.CenterOn(t.width, t.height)
 	t.animationsMenu.Y = 4
 	t.animationsMenu.Render(screen)
 
-	// Draw footer
-	footer := "[↑↓] Navigate  [Enter] Watch  [Esc] Back"
+	// Draw footer bar
+	footerY := t.height - 3
+	borderStyle := engine.Style{FG: t.theme.Border}
+	for x := 0; x < t.width; x++ {
+		screen.Set(x, footerY, '═', borderStyle)
+	}
+
+	footer := "↑↓ Navigate │ Enter Watch │ Esc Back"
 	screen.DrawTextCentered(t.height-2, footer, engine.Style{FG: t.theme.TextDim})
 }
 
 func (t *CustomTUI) renderStore(screen *engine.Screen) {
-	// Draw title
-	screen.DrawTextCentered(1, "Store", engine.Style{FG: t.theme.Primary, Bold: true})
+	// Draw title with decorative border
+	title := "╔═══ Store ═══╗"
+	screen.DrawTextCentered(1, title, engine.Style{FG: t.theme.Primary, Bold: true})
 
-	// Loading state
+	// Loading state with spinner
 	if t.storeLoading {
-		screen.DrawTextCentered(t.height/2, "Loading store...", engine.Style{FG: t.theme.TextDim})
-		footer := "[Esc] Back"
+		// Draw a loading spinner
+		spinnerChars := []rune{'⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'}
+		spinnerIdx := (int(time.Now().UnixNano()/100000000) % len(spinnerChars))
+		spinnerText := string(spinnerChars[spinnerIdx]) + " Loading store..."
+		screen.DrawTextCentered(t.height/2, spinnerText, engine.Style{FG: t.theme.Warning})
+
+		// Footer bar
+		footerY := t.height - 3
+		borderStyle := engine.Style{FG: t.theme.Border}
+		for x := 0; x < t.width; x++ {
+			screen.Set(x, footerY, '═', borderStyle)
+		}
+		footer := "Esc Back"
 		screen.DrawTextCentered(t.height-2, footer, engine.Style{FG: t.theme.TextDim})
 		return
 	}
 
 	// Error state
 	if t.storeError != "" {
-		screen.DrawTextCentered(t.height/2-1, "Error loading store:", engine.Style{FG: engine.ColorRed})
-		screen.DrawTextCentered(t.height/2, t.storeError, engine.Style{FG: engine.ColorRed})
+		screen.DrawTextCentered(t.height/2-1, "╔══ Error loading store ══╗", engine.Style{FG: t.theme.Error, Bold: true})
+		screen.DrawTextCentered(t.height/2, t.storeError, engine.Style{FG: t.theme.Error})
 		screen.DrawTextCentered(t.height/2+2, "Press Enter to retry", engine.Style{FG: t.theme.TextDim})
-		footer := "[Enter] Retry  [Esc] Back"
+
+		// Footer bar
+		footerY := t.height - 3
+		borderStyle := engine.Style{FG: t.theme.Border}
+		for x := 0; x < t.width; x++ {
+			screen.Set(x, footerY, '═', borderStyle)
+		}
+		footer := "Enter Retry │ Esc Back"
 		screen.DrawTextCentered(t.height-2, footer, engine.Style{FG: t.theme.TextDim})
 		return
 	}
@@ -461,7 +792,14 @@ func (t *CustomTUI) renderStore(screen *engine.Screen) {
 	// Empty state
 	if len(t.storeGames) == 0 {
 		screen.DrawTextCentered(t.height/2, "No games available in store", engine.Style{FG: t.theme.TextDim})
-		footer := "[Esc] Back"
+
+		// Footer bar
+		footerY := t.height - 3
+		borderStyle := engine.Style{FG: t.theme.Border}
+		for x := 0; x < t.width; x++ {
+			screen.Set(x, footerY, '═', borderStyle)
+		}
+		footer := "Esc Back"
 		screen.DrawTextCentered(t.height-2, footer, engine.Style{FG: t.theme.TextDim})
 		return
 	}
@@ -485,11 +823,11 @@ func (t *CustomTUI) renderStore(screen *engine.Screen) {
 			break
 		}
 
-		// Selection indicator
+		// Selection indicator with improved highlighting
 		prefix := "  "
 		style := engine.Style{FG: engine.ColorWhite}
 		if idx == t.storeSelectedIdx {
-			prefix = "> "
+			prefix = "▸ "
 			style = engine.Style{FG: t.theme.Accent, Bold: true}
 		}
 
@@ -515,17 +853,23 @@ func (t *CustomTUI) renderStore(screen *engine.Screen) {
 		screen.DrawText(t.width-len(indicator)-2, 2, indicator, engine.Style{FG: t.theme.TextDim})
 	}
 
-	// Draw footer
-	footer := "[↑↓] Navigate  [Enter] Install  [Esc] Back"
+	// Draw footer bar
+	footerY := t.height - 3
+	borderStyle := engine.Style{FG: t.theme.Border}
+	for x := 0; x < t.width; x++ {
+		screen.Set(x, footerY, '═', borderStyle)
+	}
+
+	footer := "↑↓ Navigate │ Enter Install │ Esc Back"
 	screen.DrawTextCentered(t.height-2, footer, engine.Style{FG: t.theme.TextDim})
 }
 
 func (t *CustomTUI) renderHelp(screen *engine.Screen) {
-	// Draw title
-	screen.DrawTextCentered(1, "Help", engine.Style{FG: t.theme.Primary, Bold: true})
+	// Draw title with decorative border
+	title := "╔═══ Help ═══╗"
+	screen.DrawTextCentered(1, title, engine.Style{FG: t.theme.Primary, Bold: true})
 
 	help := []string{
-		"",
 		"Welcome to Slip!",
 		"",
 		"Slip is a terminal entertainment platform designed to",
@@ -533,25 +877,23 @@ func (t *CustomTUI) renderHelp(screen *engine.Screen) {
 		"commands like AI assistants, builds, or deploys.",
 		"",
 		"Navigation:",
-		"  [↑/↓]     Move selection up/down",
-		"  [Enter]   Select item",
-		"  [Esc]     Go back",
-		"  [Q]       Quit",
+		"  ↑/↓       Move selection up/down",
+		"  Enter     Select item",
+		"  Esc       Go back",
+		"  :         Command mode",
+		"  Q         Quit",
 		"",
 		"In Games:",
-		"  [P]       Pause",
-		"  [R]       Restart",
-		"  [Q]       Return to menu",
+		"  P         Pause",
+		"  R         Restart",
+		"  Esc/Q     Return to menu",
 		"",
-		"Tips:",
-		"  - Use 'slip summon' in tmux to run alongside your work",
-		"  - Use 'slip play snake' to jump right into a game",
-		"",
+		"Commands:  :play snake  :theme gruvbox  :help",
 	}
 
 	startY := 3
 	for i, line := range help {
-		if startY+i >= t.height-2 {
+		if startY+i >= t.height-4 {
 			break
 		}
 		if len(line) > 0 {
@@ -563,38 +905,43 @@ func (t *CustomTUI) renderHelp(screen *engine.Screen) {
 		}
 	}
 
-	// Draw footer
-	footer := "[Esc] or [Enter] to return"
+	// Draw footer bar
+	footerY := t.height - 3
+	borderStyle := engine.Style{FG: t.theme.Border}
+	for x := 0; x < t.width; x++ {
+		screen.Set(x, footerY, '═', borderStyle)
+	}
+
+	footer := "Esc Back │ : Command"
 	screen.DrawTextCentered(t.height-2, footer, engine.Style{FG: t.theme.TextDim})
 }
 
 func (t *CustomTUI) renderSettings(screen *engine.Screen) {
-	// Draw title
-	screen.DrawTextCentered(1, "Settings", engine.Style{FG: t.theme.Primary, Bold: true})
+	// Draw title with decorative border
+	title := "╔═══ Settings ═══╗"
+	screen.DrawTextCentered(1, title, engine.Style{FG: t.theme.Primary, Bold: true})
 
 	// Load current config
 	cfg, _ := state.LoadConfig()
 
 	// Settings display
 	settings := []string{
-		"",
 		"Current Settings:",
 		"",
-		fmt.Sprintf("  Theme: %s", cfg.Theme),
-		fmt.Sprintf("  TUI Mode: %s", cfg.TUIMode),
-		fmt.Sprintf("  Dock: %s", cfg.DefaultDock),
-		fmt.Sprintf("  Size: %s", cfg.DefaultSize),
-		fmt.Sprintf("  FPS: %d", cfg.DefaultFPS),
-		fmt.Sprintf("  Player: %s", cfg.PlayerName),
-		fmt.Sprintf("  Show FPS: %v", cfg.ShowFPSCounter),
+		fmt.Sprintf("  Theme:     %s", cfg.Theme),
+		fmt.Sprintf("  TUI Mode:  %s", cfg.TUIMode),
+		fmt.Sprintf("  Dock:      %s", cfg.DefaultDock),
+		fmt.Sprintf("  Size:      %s", cfg.DefaultSize),
+		fmt.Sprintf("  FPS:       %d", cfg.DefaultFPS),
+		fmt.Sprintf("  Player:    %s", cfg.PlayerName),
+		fmt.Sprintf("  Show FPS:  %v", cfg.ShowFPSCounter),
 		"",
-		"Use 'slip config set <key> <value>' to change settings",
-		"",
+		"Use ':theme <name>' or 'slip config set <key> <value>'",
 	}
 
 	startY := 4
 	for i, line := range settings {
-		if startY+i >= t.height-2 {
+		if startY+i >= t.height-4 {
 			break
 		}
 		x := (t.width - len(line)) / 2
@@ -604,8 +951,14 @@ func (t *CustomTUI) renderSettings(screen *engine.Screen) {
 		screen.DrawText(x, startY+i, line, engine.Style{FG: engine.ColorWhite})
 	}
 
-	// Draw footer
-	footer := "[Esc] or [Enter] to return"
+	// Draw footer bar
+	footerY := t.height - 3
+	borderStyle := engine.Style{FG: t.theme.Border}
+	for x := 0; x < t.width; x++ {
+		screen.Set(x, footerY, '═', borderStyle)
+	}
+
+	footer := "Esc Back │ : Command"
 	screen.DrawTextCentered(t.height-2, footer, engine.Style{FG: t.theme.TextDim})
 }
 

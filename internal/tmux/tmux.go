@@ -2,6 +2,7 @@ package tmux
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
@@ -87,21 +88,33 @@ func SplitSlip(dock string, size int, command []string) (string, error) {
 		args = append(args, "-l", strconv.Itoa(size))
 	}
 
-	// Join command into single string for tmux
-	cmdStr := strings.Join(command, " ")
+	// Quote each part of the command and join them
+	// This handles paths with spaces correctly
+	var quotedParts []string
+	for _, part := range command {
+		// Quote parts that contain spaces
+		if strings.Contains(part, " ") {
+			quotedParts = append(quotedParts, "\""+part+"\"")
+		} else {
+			quotedParts = append(quotedParts, part)
+		}
+	}
+	cmdStr := strings.Join(quotedParts, " ")
 	args = append(args, cmdStr)
 
 	paneID, err := runTmux(args...)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("split-window failed: %w (command: %s)", err, cmdStr)
 	}
 	if paneID == "" {
 		return "", errors.New("no pane id returned")
 	}
+	paneID = strings.TrimSpace(paneID)
 
 	// Tag the pane
 	if _, err := runTmux("set-option", "-p", "-t", paneID, slipPaneOption, "1"); err != nil {
-		return paneID, err
+		// Non-fatal, pane was still created
+		return paneID, nil
 	}
 
 	// Return focus to original pane

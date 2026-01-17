@@ -147,7 +147,6 @@ func summonCmd(args []string) int {
 	if err != nil {
 		exe = "slip"
 	}
-	cmdArgs := []string{exe, "run", "--width", strconv.Itoa(width), "--height", strconv.Itoa(height), "--fps", strconv.Itoa(*fps)}
 
 	// Check if in tmux
 	if tmux.InTmux() {
@@ -165,8 +164,12 @@ func summonCmd(args []string) int {
 			paneSize = height + 2
 		}
 
+		// For tmux, don't pass explicit dimensions - let slip auto-detect the pane size
+		// This prevents aspect ratio issues when the actual pane differs from requested
+		tmuxCmdArgs := []string{exe, "run", "--fps", strconv.Itoa(*fps)}
+
 		// Create new pane
-		paneID, err := tmux.SplitSlip(*dock, paneSize, cmdArgs)
+		paneID, err := tmux.SplitSlip(*dock, paneSize, tmuxCmdArgs)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create tmux pane: %s\n", err)
 			return 1
@@ -179,18 +182,72 @@ func summonCmd(args []string) int {
 	// Not in tmux - try Windows Terminal
 	if platform.IsWindows() && !platform.IsWSL() {
 		if platform.HasWindowsTerminal() {
-			if err := platform.LaunchWindowsTerminal(cmdArgs, *dock); err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to launch Windows Terminal: %s\n", err)
-				return 1
+			if platform.InWindowsTerminal() {
+				// Inside Windows Terminal - can do proper docking
+				if err := platform.LaunchWindowsTerminal(cmdArgs, *dock); err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to launch Windows Terminal pane: %s\n", err)
+					return 1
+				}
+				fmt.Printf("Slip summoned in Windows Terminal pane (docked %s)\n", *dock)
+				return 0
+			} else {
+				// WT available but not running inside it - will open new window
+				if err := platform.LaunchWindowsTerminal(cmdArgs, *dock); err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to launch Windows Terminal: %s\n", err)
+					return 1
+				}
+				fmt.Println("Slip launched in new Windows Terminal window")
+				fmt.Println("Tip: Run Slip from inside Windows Terminal for proper pane docking")
+				return 0
 			}
-			fmt.Println("Slip summoned in new Windows Terminal pane")
-			return 0
 		}
+		// Windows but no WT
+		printWindowsHelp()
+		return 1
 	}
 
-	fmt.Fprintln(os.Stderr, "Not in tmux. Start tmux first, or use 'slip run' to run in current terminal.")
-	fmt.Fprintln(os.Stderr, "Tip: run 'tmux' then 'slip summon'")
+	// Not Windows, not in tmux - check if tmux is available
+	if tmux.HasTmux() {
+		// tmux is installed but user is not inside a tmux session
+		fmt.Fprintln(os.Stderr, "Not inside a tmux session")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "To use slip summon, first start tmux:")
+		fmt.Fprintln(os.Stderr, "  1. Run: tmux")
+		fmt.Fprintln(os.Stderr, "  2. Then run: slip summon")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Or just run 'slip run' in current terminal")
+		return 1
+	}
+
+	// tmux not installed
+	fmt.Fprintln(os.Stderr, "Docking not available")
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "Docking requires:")
+	fmt.Fprintln(os.Stderr, "  • tmux on Linux/macOS/WSL")
+	fmt.Fprintln(os.Stderr, "  • Windows Terminal (wt.exe) on Windows")
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "Alternatives:")
+	fmt.Fprintln(os.Stderr, "  • Install tmux: apt install tmux / brew install tmux")
+	fmt.Fprintln(os.Stderr, "  • Run 'slip run' in current terminal")
 	return 1
+}
+
+func printWindowsHelp() {
+	fmt.Fprintln(os.Stderr, "╭──────────────────────────────────────────────────╮")
+	fmt.Fprintln(os.Stderr, "│  Docking not available                          │")
+	fmt.Fprintln(os.Stderr, "├──────────────────────────────────────────────────┤")
+	fmt.Fprintln(os.Stderr, "│  Docking requires:                              │")
+	fmt.Fprintln(os.Stderr, "│  • Windows Terminal (wt.exe) on Windows         │")
+	fmt.Fprintln(os.Stderr, "│  • tmux on Linux/macOS                          │")
+	fmt.Fprintln(os.Stderr, "│                                                 │")
+	fmt.Fprintln(os.Stderr, "│  Alternatives:                                  │")
+	fmt.Fprintln(os.Stderr, "│  • Install Windows Terminal from Microsoft Store│")
+	fmt.Fprintln(os.Stderr, "│  • Use Windows Terminal's built-in pane split:  │")
+	fmt.Fprintln(os.Stderr, "│    Alt+Shift+Plus (right) or Alt+Shift+- (down) │")
+	fmt.Fprintln(os.Stderr, "│    Then run 'slip run' in the new pane          │")
+	fmt.Fprintln(os.Stderr, "│  • Install tmux via WSL for full dock support   │")
+	fmt.Fprintln(os.Stderr, "│  • Run 'slip run' in current terminal           │")
+	fmt.Fprintln(os.Stderr, "╰──────────────────────────────────────────────────╯")
 }
 
 func hideCmd(args []string) int {

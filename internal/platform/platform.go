@@ -64,15 +64,18 @@ func LaunchWindowsTerminal(command []string, dock string) error {
 	args := []string{}
 
 	// Determine split direction based on dock
+	// Windows Terminal split-pane flags:
+	//   -H = horizontal split (divider is horizontal, panes stack vertically - top/bottom)
+	//   -V = vertical split (divider is vertical, panes side by side - left/right)
 	if InWindowsTerminal() {
 		// Split the current window
 		switch strings.ToLower(dock) {
 		case "bottom":
-			args = append(args, "split-pane", "-V")
+			args = append(args, "split-pane", "-H") // horizontal divider = bottom pane
 		case "left":
-			args = append(args, "split-pane", "-H", "-d", ".")
+			args = append(args, "split-pane", "-V", "-d", ".")
 		default: // right
-			args = append(args, "split-pane", "-H")
+			args = append(args, "split-pane", "-V") // vertical divider = right pane
 		}
 	} else {
 		// Open new tab
