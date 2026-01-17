@@ -81,7 +81,7 @@ func NewEngine(width, height, fps int) *Engine {
 // SetGame sets the current game
 func (e *Engine) SetGame(game Game) error {
 	if e.currentGame != nil {
-		e.currentGame.Stop()
+		_ = e.currentGame.Stop()
 	}
 	e.currentGame = game
 
@@ -195,7 +195,7 @@ func (e *Engine) Run() error {
 					break
 				}
 				if e.currentGame != nil && !e.paused {
-					e.currentGame.HandleInput(input)
+					_ = e.currentGame.HandleInput(input)
 				}
 			default:
 				// No more inputs to process
@@ -217,7 +217,7 @@ func (e *Engine) Run() error {
 				continue
 			}
 			if e.currentGame != nil && !e.paused {
-				e.currentGame.HandleInput(input)
+				_ = e.currentGame.HandleInput(input)
 			}
 
 		case <-ticker.C:
@@ -236,7 +236,7 @@ func (e *Engine) Run() error {
 			// Render
 			e.screen.Clear()
 			if e.currentGame != nil {
-				e.currentGame.Render(e.screen)
+				_ = e.currentGame.Render(e.screen)
 			}
 
 			// Draw FPS if enabled
@@ -264,7 +264,7 @@ func (e *Engine) Run() error {
 	}
 
 	if e.currentGame != nil {
-		e.currentGame.Stop()
+		_ = e.currentGame.Stop()
 	}
 
 	if e.onExit != nil {
@@ -325,7 +325,7 @@ func (e *Engine) RunOnce(dt float64) error {
 			return fmt.Errorf("quit requested")
 		}
 		if e.currentGame != nil {
-			e.currentGame.HandleInput(input)
+			_ = e.currentGame.HandleInput(input)
 		}
 	default:
 	}
@@ -340,7 +340,7 @@ func (e *Engine) RunOnce(dt float64) error {
 	// Render
 	e.screen.Clear()
 	if e.currentGame != nil {
-		e.currentGame.Render(e.screen)
+		_ = e.currentGame.Render(e.screen)
 	}
 	e.screen.Flush()
 

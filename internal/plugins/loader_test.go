@@ -210,7 +210,7 @@ func TestListEmpty(t *testing.T) {
 
 	list := loader.List()
 	// List() may return nil or empty slice for empty manifests
-	if list != nil && len(list) != 0 {
+	if len(list) != 0 {
 		t.Errorf("Expected 0 manifests, got %d", len(list))
 	}
 }

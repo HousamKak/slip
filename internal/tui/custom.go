@@ -28,7 +28,6 @@ type CustomTUI struct {
 	homeMenu       *ui.Menu
 	gamesMenu      *ui.Menu
 	animationsMenu *ui.Menu
-	storeMenu      *ui.Menu
 
 	// Registries
 	gameRegistry *games.Registry
@@ -44,9 +43,6 @@ type CustomTUI struct {
 	// Callbacks
 	gameLauncher func(string) error
 	animLauncher func(string) error
-
-	// Engine for rendering
-	engine *engine.Engine
 
 	// Theme
 	theme ui.Theme
@@ -340,7 +336,7 @@ func (t *CustomTUI) handleGamesInput(input engine.Input) {
 			if selected.ID == "back" {
 				t.screen = ScreenHome
 			} else if t.gameLauncher != nil {
-				t.gameLauncher(selected.ID)
+				_ = t.gameLauncher(selected.ID)
 			}
 		}
 	}
@@ -358,7 +354,7 @@ func (t *CustomTUI) handleAnimationsInput(input engine.Input) {
 			if selected.ID == "back" {
 				t.screen = ScreenHome
 			} else if t.animLauncher != nil {
-				t.animLauncher(selected.ID)
+				_ = t.animLauncher(selected.ID)
 			}
 		}
 	}
@@ -401,10 +397,8 @@ func (t *CustomTUI) handleStoreInput(input engine.Input) {
 		}
 	case engine.KeyEnter:
 		// Install selected game (placeholder - would need confirmation dialog)
-		if t.storeSelectedIdx < len(t.storeGames) {
-			// For now, just show it's not implemented
-			// In production, this would trigger installation
-		}
+		// For now, this is not implemented
+		// In production, this would trigger installation
 	}
 }
 
@@ -534,7 +528,7 @@ func (t *CustomTUI) executeCommand(cmdLine string) {
 			// Also save to config
 			cfg, _ := state.LoadConfig()
 			cfg.Theme = themeName
-			state.SaveConfig(cfg)
+			_ = state.SaveConfig(cfg)
 			return nil
 		},
 		LaunchGame: func(gameID string) error {
