@@ -40,25 +40,8 @@ jobs:
       - name: Run tests with race detector
         run: go test -v -race ./...
 
-      - name: Run tests with coverage (Ubuntu Go 1.22 only)
-        if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.22'
-        run: go test -v -coverprofile=coverage.out ./...
-
-      - name: Generate coverage report
-        if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.22'
-        run: go tool cover -func=coverage.out
-
       - name: Build binary
         run: go build -v ./cmd/slip
-
-      - name: Upload coverage to Codecov (Ubuntu only)
-        if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.22'
-        uses: codecov/codecov-action@v4
-        with:
-          file: ./coverage.out
-          flags: unittests
-          name: codecov-slip
-          fail_ci_if_error: false
 
   lint:
     name: Lint
