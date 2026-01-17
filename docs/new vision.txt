@@ -1,0 +1,184 @@
+Alright — planning first, decisions later.
+
+## Vision
+
+You’re in a terminal doing real work (Claude Code / Codex / builds). At the same time, you have a second “space” in the same window where you can **play mini-games or watch ASCII animations** without breaking the main workflow.
+
+The clean mental model is:
+
+* **Pane A (Work):** normal shell running interactive tools (claude code, git, tests, ssh)
+* **Pane B (Slip):** a persistent TUI “arcade” you can switch between games/animations
+
+tmux is the glue that makes this possible because it gives you **two isolated terminals** inside one window.
+
+---
+
+## Why tmux is the correct foundation
+
+Interactive tools like Claude Code *assume they own the terminal* (stdin/stdout/cursor). If Slip tried to animate in the same terminal, it would corrupt the UI/output.
+
+tmux solves that by giving each pane its own:
+
+* input stream
+* output buffer
+* cursor state
+* process tree
+
+So Slip can redraw constantly in Pane B while Claude does whatever it wants in Pane A.
+
+---
+
+## What “achieving that” means technically
+
+To fulfill the vision, you need only these capabilities:
+
+### 1) A way to *create and manage* the split
+
+* Start tmux session (or reuse existing)
+* Split the window into two panes
+* Launch Slip in one pane
+* Leave the other pane untouched for the user
+
+This can be done by a `slip summon` command that effectively runs tmux commands like:
+
+* split right / split bottom
+* set pane size
+* run `slip run` inside that pane
+* tag the pane so you can find it later (`slip hide`, `slip focus`, etc.)
+
+### 2) Slip must be a long-running TUI program
+
+Slip in its pane should:
+
+* draw frames repeatedly (animations)
+* handle key input (game controls)
+* offer a navigation menu (choose game/animation)
+* run indefinitely until quit
+
+Bubble Tea is a good fit here because it’s designed for this “own the terminal area” behavior.
+
+### 3) No interference with work tools
+
+Slip should never print into Pane A.
+No hooks into Claude’s stdout.
+No shared terminal state.
+Just coexistence.
+
+---
+
+## The minimal system components (conceptual)
+
+Think of Slip as 2 layers:
+
+### A) **Launcher layer** (outside, one-shot CLI commands)
+
+* `slip summon` → ensures tmux split + runs Slip in a pane
+* `slip hide` → closes Slip pane
+* `slip focus` → jumps cursor to Slip pane
+* `slip work` → jumps cursor back to work pane (optional)
+* (later) `slip say "..."` → send message into Slip pane (optional)
+
+This layer is mostly tmux automation.
+
+### B) **Slip runtime layer** (inside the Slip pane)
+
+A TUI “shell” with:
+
+* Home screen
+* Games list
+* Animations list
+* Settings/help
+* Runs selected “app” (snake, pong, paperclip idle, etc.)
+
+---
+
+## How the user experience should feel
+
+One plausible flow:
+
+1. User runs:
+
+   * `tmux` (or `slip summon` could start it)
+2. `slip summon` splits the terminal and opens Slip on the right.
+3. User runs `claude code` in left pane.
+4. While waiting, user presses a key to jump to Slip pane (tmux prefix + arrow, or your `slip focus`) and plays Snake.
+5. When Claude finishes, they jump back to left pane.
+
+The key point: **the panes are independent**, so neither breaks the other.
+
+---
+
+## Constraints we should acknowledge early
+
+These aren’t decisions — just truths that shape the design:
+
+* tmux panes are rectangular and non-overlapping (not a floating overlay).
+* On Windows, this works best via **WSL + tmux** (same behavior as Linux/macOS).
+* If the user isn’t in tmux, you need a fallback:
+
+  * open a new terminal tab/window for Slip, OR
+  * run Slip alone (no split), OR
+  * tell them “use tmux for side-by-side”.
+
+---
+
+## Plan the build in phases (no feature commitments yet)
+
+### Phase 0: Prove the split workflow
+
+Goal: “I can reliably summon a second pane and run a persistent app there.”
+
+Deliverables:
+
+* a `slip summon` that:
+
+  * checks `TMUX`
+  * creates a pane
+  * runs a dummy loop app (even just a bouncing dot)
+* a `slip hide` that closes that pane
+
+### Phase 1: Slip runtime skeleton
+
+Goal: “Slip is a stable TUI with navigation.”
+
+Deliverables:
+
+* Home screen
+* Menu switching (Games / Animations)
+* One placeholder “app” that animates (paperclip idle)
+* One placeholder “game” that handles input (even a tiny toy)
+
+### Phase 2: Add real content (games + animations)
+
+Goal: “It becomes fun.”
+
+Deliverables:
+
+* 1–2 games (Snake first is easiest)
+* 1–2 animations (paperclip + starfield)
+* clean keybindings and “back to menu”
+
+### Phase 3: Polish for real users
+
+Goal: “Feels like a product, not a hack.”
+
+Deliverables:
+
+* sensible defaults for pane size/dock
+* help screen
+* storing highscores
+* graceful resize handling
+* packaging/builds
+
+---
+
+## The single most important design principle
+
+**Pane B must be fully self-contained.**
+No attempt to draw on Pane A, no parsing Claude output, no mixing streams.
+
+That’s how you keep it reliable and “works with any AI CLI”.
+
+---
+
+If you’re good with this plan, the next step is: I’ll write the **Phase 0 “split workflow” spec** (exact commands, behaviors, failure modes) and the minimal command set (summon/hide/focus) — still without locking in architecture decisions for plugins, packs, etc.
