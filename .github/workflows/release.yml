@@ -1,0 +1,162 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on version tags like v1.0.0
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for proper git info
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'  # Adjust to match your Go version
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Build binaries for all platforms
+        env:
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
+        run: |
+          # Create build directory
+          mkdir -p build
+
+          # Get commit and timestamp
+          COMMIT=$(git rev-parse --short HEAD)
+          BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S_UTC')
+
+          # Common ldflags
+          LDFLAGS="-s -w -X main.Version=${VERSION} -X main.Commit=${COMMIT} -X main.BuildTime=${BUILD_TIME}"
+
+          # Build for each platform
+          echo "Building slip v${VERSION}..."
+
+          # Linux AMD64
+          echo "Building linux/amd64..."
+          GOOS=linux GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o build/slip-linux-amd64 ./cmd/slip
+
+          # Linux ARM64
+          echo "Building linux/arm64..."
+          GOOS=linux GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o build/slip-linux-arm64 ./cmd/slip
+
+          # macOS AMD64
+          echo "Building darwin/amd64..."
+          GOOS=darwin GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o build/slip-darwin-amd64 ./cmd/slip
+
+          # macOS ARM64
+          echo "Building darwin/arm64..."
+          GOOS=darwin GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o build/slip-darwin-arm64 ./cmd/slip
+
+          # Windows AMD64
+          echo "Building windows/amd64..."
+          GOOS=windows GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o build/slip-windows-amd64.exe ./cmd/slip
+
+          echo "All builds completed!"
+          ls -lh build/
+
+      - name: Generate checksums
+        run: |
+          cd build
+          for file in slip-*; do
+            sha256sum "$file" > "${file}.sha256"
+          done
+          cat *.sha256
+
+      - name: Create release archives
+        run: |
+          cd build
+
+          # Create tar.gz for Unix platforms
+          for file in slip-linux-* slip-darwin-*; do
+            if [[ ! "$file" =~ \.sha256$ ]]; then
+              tar -czf "${file}.tar.gz" "$file" "${file}.sha256"
+              echo "Created ${file}.tar.gz"
+            fi
+          done
+
+          # Create zip for Windows
+          for file in slip-windows-*.exe; do
+            if [[ ! "$file" =~ \.sha256$ ]]; then
+              zip "${file%.exe}.zip" "$file" "${file}.sha256"
+              echo "Created ${file%.exe}.zip"
+            fi
+          done
+
+          ls -lh
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Slip v${{ steps.get_version.outputs.VERSION }}
+          body: |
+            ## Slip v${{ steps.get_version.outputs.VERSION }}
+
+            Terminal entertainment platform with games, animations, and Lua plugin support.
+
+            ### Installation
+
+            Download the appropriate binary for your platform, extract it, and run:
+
+            ```bash
+            # Linux/macOS
+            chmod +x slip-*
+            ./slip-* run
+
+            # Windows
+            slip-windows-amd64.exe run
+            ```
+
+            ### What's New
+
+            See [CHANGELOG.md](CHANGELOG.md) for details.
+
+            ### Checksums
+
+            SHA256 checksums are included with each binary for verification.
+
+            ### Platforms
+
+            - **Linux**: AMD64, ARM64
+            - **macOS**: Intel (AMD64), Apple Silicon (ARM64)
+            - **Windows**: AMD64
+
+            ### Quick Start
+
+            ```bash
+            slip run              # Start interactive menu
+            slip play snake       # Play a specific game
+            slip animate matrix   # Run an animation
+            slip --help           # Show all commands
+            ```
+          draft: false
+          prerelease: false
+          files: |
+            build/*.tar.gz
+            build/*.zip
+            build/*.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: slip-binaries-${{ steps.get_version.outputs.VERSION }}
+          path: build/*
+          retention-days: 90

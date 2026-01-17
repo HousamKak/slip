@@ -148,6 +148,9 @@ func summonCmd(args []string) int {
 		exe = "slip"
 	}
 
+	// Build command args for launching Slip
+	cmdArgs := []string{exe, "run", "--fps", strconv.Itoa(*fps)}
+
 	// Check if in tmux
 	if tmux.InTmux() {
 		if !tmux.HasTmux() {
@@ -166,10 +169,9 @@ func summonCmd(args []string) int {
 
 		// For tmux, don't pass explicit dimensions - let slip auto-detect the pane size
 		// This prevents aspect ratio issues when the actual pane differs from requested
-		tmuxCmdArgs := []string{exe, "run", "--fps", strconv.Itoa(*fps)}
 
 		// Create new pane
-		paneID, err := tmux.SplitSlip(*dock, paneSize, tmuxCmdArgs)
+		paneID, err := tmux.SplitSlip(*dock, paneSize, cmdArgs)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create tmux pane: %s\n", err)
 			return 1
